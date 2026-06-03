@@ -100,8 +100,15 @@
 <script>
 const STORAGE_KEY = 'planner_inbox_config';
 
+const DEFAULT_CONFIG = {
+  clientId: 'caa0e2e7-c427-49eb-805b-5e89a3471eab',
+  tenantId: '464c8dbf-6c10-4fcf-bab6-31d8ff5d8641',
+  planId: 'zrt5cAtBGUWnRPCeZqjFupgAFAdw',
+  bucketId: ''
+};
+
 function loadConfig() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+  try { return Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}); } catch { return DEFAULT_CONFIG; }
 }
 
 function saveConfig() {
