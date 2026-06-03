@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planner Inbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .card { background: #fff; border-radius: 16px; padding: 2rem; width: 100%; max-width: 420px; box-shadow: 0 2px 20px rgba(0,0,0,0.08); }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 1.75rem; }
+  .logo-icon { width: 32px; height: 32px; background: #0078d4; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 18px; height: 18px; fill: white; }
+  .logo h1 { font-size: 17px; font-weight: 600; color: #1a1a1a; }
+  .logo span { font-size: 13px; color: #888; font-weight: 400; display: block; margin-top: 1px; }
+  label { display: block; font-size: 13px; font-weight: 500; color: #444; margin-bottom: 6px; }
+  input[type="text"], textarea, input[type="date"] {
+    width: 100%; border: 1px solid #ddd; border-radius: 8px;
+    padding: 10px 12px; font-size: 15px; color: #1a1a1a;
+    font-family: inherit; outline: none; transition: border-color 0.15s;
+    background: #fafafa;
+  }
+  input[type="text"]:focus, textarea:focus, input[type="date"]:focus { border-color: #0078d4; background: #fff; }
+  textarea { resize: none; height: 80px; line-height: 1.5; }
+  .field { margin-bottom: 1.1rem; }
+  .btn { width: 100%; padding: 12px; background: #0078d4; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 0.5rem; transition: background 0.15s; }
+  .btn:hover { background: #006abc; }
+  .btn:disabled { background: #99c2e8; cursor: not-allowed; }
+  .status { margin-top: 1rem; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: none; }
+  .status.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  .status.error { background: #fde8e8; color: #b91c1c; display: block; }
+  .status.loading { background: #e8f0fe; color: #1a56db; display: block; }
+  .config-link { text-align: center; margin-top: 1.25rem; }
+  .config-link a { font-size: 12px; color: #888; text-decoration: none; }
+  .config-link a:hover { color: #0078d4; }
+  #config-panel { display: none; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee; }
+  #config-panel.open { display: block; }
+  .config-title { font-size: 13px; font-weight: 600; color: #666; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .save-btn { width: 100%; padding: 9px; background: transparent; color: #0078d4; border: 1px solid #0078d4; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 0.5rem; }
+  .save-btn:hover { background: #f0f7ff; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 3a1 1 0 011 1v4h4a1 1 0 010 2h-4v4a1 1 0 01-2 0v-4H7a1 1 0 010-2h4V7a1 1 0 011-1z"/></svg>
+    </div>
+    <div>
+      <h1>Planner Inbox</h1>
+      <span>Tilføj opgave til indbakken</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="title">Opgavetitel *</label>
+    <input type="text" id="title" placeholder="Hvad skal gøres?" autocomplete="off" />
+  </div>
+
+  <div class="field">
+    <label for="notes">Noter</label>
+    <textarea id="notes" placeholder="Yderligere detaljer (valgfrit)"></textarea>
+  </div>
+
+  <div class="field">
+    <label for="duedate">Forfaldsdato</label>
+    <input type="date" id="duedate" />
+  </div>
+
+  <button class="btn" id="submit-btn" onclick="submitTask()">Tilføj til indbakken</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="config-link">
+    <a href="#" onclick="toggleConfig(event)">⚙ Opsætning (API-konfiguration)</a>
+  </div>
+
+  <div id="config-panel">
+    <div class="config-title">Microsoft Graph – konfiguration</div>
+    <div class="field">
+      <label for="cfg-client">Client ID</label>
+      <input type="text" id="cfg-client" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+    </div>
+    <div class="field">
+      <label for="cfg-tenant">Tenant ID</label>
+      <input type="text" id="cfg-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+    </div>
+    <div class="field">
+      <label for="cfg-plan">Plan ID (Inbox)</label>
+      <input type="text" id="cfg-plan" placeholder="Plan ID fra Planner" />
+    </div>
+    <div class="field">
+      <label for="cfg-bucket">Bucket ID</label>
+      <input type="text" id="cfg-bucket" placeholder="Bucket ID (valgfrit – bruger default)" />
+    </div>
+    <button class="save-btn" onclick="saveConfig()">Gem konfiguration</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'planner_inbox_config';
+
+function loadConfig() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+
+function saveConfig() {
+  const cfg = {
+    clientId: document.getElementById('cfg-client').value.trim(),
+    tenantId: document.getElementById('cfg-tenant').value.trim(),
+    planId: document.getElementById('cfg-plan').value.trim(),
+    bucketId: document.getElementById('cfg-bucket').value.trim()
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  showStatus('Konfiguration gemt ✓', 'success');
+}
+
+function toggleConfig(e) {
+  e.preventDefault();
+  const panel = document.getElementById('config-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    const cfg = loadConfig();
+    document.getElementById('cfg-client').value = cfg.clientId || '';
+    document.getElementById('cfg-tenant').value = cfg.tenantId || '';
+    document.getElementById('cfg-plan').value = cfg.planId || '';
+    document.getElementById('cfg-bucket').value = cfg.bucketId || '';
+  }
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+
+async function getToken(clientId, tenantId) {
+  const SCOPES = 'Tasks.ReadWrite';
+  const redirectUri = window.location.href.split('?')[0];
+  const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
+    `?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${encodeURIComponent(SCOPES)}&response_mode=fragment&prompt=select_account`;
+
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if (params.get('access_token')) {
+    const token = params.get('access_token');
+    history.replaceState(null, '', window.location.pathname);
+    return token;
+  }
+
+  sessionStorage.setItem('planner_pending', JSON.stringify({
+    title: document.getElementById('title').value,
+    notes: document.getElementById('notes').value,
+    duedate: document.getElementById('duedate').value
+  }));
+  window.location.href = authUrl;
+  return null;
+}
+
+async function submitTask() {
+  const title = document.getElementById('title').value.trim();
+  if (!title) { showStatus('Skriv en opgavetitel.', 'error'); return; }
+
+  const cfg = loadConfig();
+  if (!cfg.clientId || !cfg.tenantId || !cfg.planId) {
+    showStatus('Udfyld konfiguration (Client ID, Tenant ID, Plan ID) først.', 'error');
+    document.getElementById('config-panel').classList.add('open');
+    return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  showStatus('Logger ind…', 'loading');
+
+  const token = await getToken(cfg.clientId, cfg.tenantId);
+  if (!token) return;
+
+  showStatus('Opretter opgave…', 'loading');
+
+  const body = { title, planId: cfg.planId };
+  if (cfg.bucketId) body.bucketId = cfg.bucketId;
+
+  const notes = document.getElementById('notes').value.trim();
+  if (notes) body.details = { description: notes };
+
+  const duedate = document.getElementById('duedate').value;
+  if (duedate) body.dueDateTime = new Date(duedate + 'T12:00:00').toISOString();
+
+  try {
+    const res = await fetch('https://graph.microsoft.com/v1.0/planner/tasks', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (res.ok) {
+      showStatus('✓ Opgave tilføjet til indbakken!', 'success');
+      document.getElementById('title').value = '';
+      document.getElementById('notes').value = '';
+      document.getElementById('duedate').value = '';
+    } else {
+      const err = await res.json();
+      showStatus('Fejl: ' + (err.error?.message || res.status), 'error');
+    }
+  } catch (e) {
+    showStatus('Netværksfejl: ' + e.message, 'error');
+  }
+  btn.disabled = false;
+}
+
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if (params.get('access_token')) {
+    const pending = JSON.parse(sessionStorage.getItem('planner_pending') || '{}');
+    if (pending.title) {
+      document.getElementById('title').value = pending.title;
+      document.getElementById('notes').value = pending.notes || '';
+      document.getElementById('duedate').value = pending.duedate || '';
+      sessionStorage.removeItem('planner_pending');
+      submitTask();
+    }
+  }
+});
+</script>
+</body>
+</html>
