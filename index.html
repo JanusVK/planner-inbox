@@ -156,9 +156,31 @@ async function createTask(token) {
 async function submitTask() {
   const title = document.getElementById('title').value.trim();
   if (!title) { showStatus('Skriv en opgavetitel.', 'error'); return; }
+  document.getElementById('submit-btn').disabled = true;
   showStatus('Logger ind…', 'loading');
-  const token = await getToken();
-  if (token) await createTask(token);
+
+  const accounts = msalApp.getAllAccounts();
+  let token = null;
+
+  if (accounts.length > 0) {
+    try {
+      const res = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+      token = res.accessToken;
+    } catch {}
+  }
+
+  if (!token) {
+    try {
+      const res = await msalApp.acquireTokenPopup({ scopes: SCOPES });
+      token = res.accessToken;
+    } catch (e) {
+      showStatus('Login fejlede: ' + e.message, 'error');
+      document.getElementById('submit-btn').disabled = false;
+      return;
+    }
+  }
+
+  await createTask(token);
 }
 
 init();
