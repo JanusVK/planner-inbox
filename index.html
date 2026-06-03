@@ -81,17 +81,6 @@ const msalApp = new msal.PublicClientApplication({
 
 async function init() {
   await msalApp.initialize();
-  const resp = await msalApp.handleRedirectPromise();
-  if (resp) {
-    const pending = JSON.parse(sessionStorage.getItem('planner_pending') || '{}');
-    if (pending.title) {
-      document.getElementById('title').value = pending.title;
-      document.getElementById('notes').value = pending.notes || '';
-      document.getElementById('duedate').value = pending.duedate || '';
-      sessionStorage.removeItem('planner_pending');
-      await createTask(resp.accessToken);
-    }
-  }
 }
 
 function showStatus(msg, type) {
@@ -108,13 +97,13 @@ async function getToken() {
       return res.accessToken;
     } catch {}
   }
-  sessionStorage.setItem('planner_pending', JSON.stringify({
-    title: document.getElementById('title').value,
-    notes: document.getElementById('notes').value,
-    duedate: document.getElementById('duedate').value
-  }));
-  await msalApp.acquireTokenRedirect({ scopes: SCOPES });
-  return null;
+  try {
+    const res = await msalApp.acquireTokenPopup({ scopes: SCOPES });
+    return res.accessToken;
+  } catch (e) {
+    showStatus('Login annulleret eller blokeret: ' + e.message, 'error');
+    return null;
+  }
 }
 
 async function createTask(token) {
