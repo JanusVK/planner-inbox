@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planner Inbox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msal.js/2.38.3/msal-browser.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
@@ -30,14 +31,6 @@
   .status.success { background: #e6f4ea; color: #1e7e34; display: block; }
   .status.error { background: #fde8e8; color: #b91c1c; display: block; }
   .status.loading { background: #e8f0fe; color: #1a56db; display: block; }
-  .config-link { text-align: center; margin-top: 1.25rem; }
-  .config-link a { font-size: 12px; color: #888; text-decoration: none; }
-  .config-link a:hover { color: #0078d4; }
-  #config-panel { display: none; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee; }
-  #config-panel.open { display: block; }
-  .config-title { font-size: 13px; font-weight: 600; color: #666; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  .save-btn { width: 100%; padding: 9px; background: transparent; color: #0078d4; border: 1px solid #0078d4; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 0.5rem; }
-  .save-btn:hover { background: #f0f7ff; }
 </style>
 </head>
 <body>
@@ -68,70 +61,36 @@
   </div>
 
   <button class="btn" id="submit-btn" onclick="submitTask()">Tilføj til indbakken</button>
-
   <div class="status" id="status"></div>
-
-  <div class="config-link">
-    <a href="#" onclick="toggleConfig(event)">⚙ Opsætning (API-konfiguration)</a>
-  </div>
-
-  <div id="config-panel">
-    <div class="config-title">Microsoft Graph – konfiguration</div>
-    <div class="field">
-      <label for="cfg-client">Client ID</label>
-      <input type="text" id="cfg-client" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-    </div>
-    <div class="field">
-      <label for="cfg-tenant">Tenant ID</label>
-      <input type="text" id="cfg-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-    </div>
-    <div class="field">
-      <label for="cfg-plan">Plan ID (Inbox)</label>
-      <input type="text" id="cfg-plan" placeholder="Plan ID fra Planner" />
-    </div>
-    <div class="field">
-      <label for="cfg-bucket">Bucket ID</label>
-      <input type="text" id="cfg-bucket" placeholder="Bucket ID (valgfrit – bruger default)" />
-    </div>
-    <button class="save-btn" onclick="saveConfig()">Gem konfiguration</button>
-  </div>
 </div>
 
 <script>
-const STORAGE_KEY = 'planner_inbox_config';
+const CLIENT_ID = 'caa0e2e7-c427-49eb-805b-5e89a3471eab';
+const TENANT_ID = '464c8dbf-6c10-4fcf-bab6-31d8ff5d8641';
+const PLAN_ID   = 'zrt5cAtBGUWnRPCeZqjFupgAFAdw';
+const SCOPES    = ['Tasks.ReadWrite', 'Group.Read.All'];
 
-const DEFAULT_CONFIG = {
-  clientId: 'caa0e2e7-c427-49eb-805b-5e89a3471eab',
-  tenantId: '464c8dbf-6c10-4fcf-bab6-31d8ff5d8641',
-  planId: 'zrt5cAtBGUWnRPCeZqjFupgAFAdw',
-  bucketId: ''
-};
+const msalApp = new msal.PublicClientApplication({
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    redirectUri: 'https://janusvk.github.io/planner-inbox/'
+  },
+  cache: { cacheLocation: 'sessionStorage' }
+});
 
-function loadConfig() {
-  try { return Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}); } catch { return DEFAULT_CONFIG; }
-}
-
-function saveConfig() {
-  const cfg = {
-    clientId: document.getElementById('cfg-client').value.trim(),
-    tenantId: document.getElementById('cfg-tenant').value.trim(),
-    planId: document.getElementById('cfg-plan').value.trim(),
-    bucketId: document.getElementById('cfg-bucket').value.trim()
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
-  showStatus('Konfiguration gemt ✓', 'success');
-}
-
-function toggleConfig(e) {
-  e.preventDefault();
-  const panel = document.getElementById('config-panel');
-  panel.classList.toggle('open');
-  if (panel.classList.contains('open')) {
-    const cfg = loadConfig();
-    document.getElementById('cfg-client').value = cfg.clientId || '';
-    document.getElementById('cfg-tenant').value = cfg.tenantId || '';
-    document.getElementById('cfg-plan').value = cfg.planId || '';
-    document.getElementById('cfg-bucket').value = cfg.bucketId || '';
+async function init() {
+  await msalApp.initialize();
+  const resp = await msalApp.handleRedirectPromise();
+  if (resp) {
+    const pending = JSON.parse(sessionStorage.getItem('planner_pending') || '{}');
+    if (pending.title) {
+      document.getElementById('title').value = pending.title;
+      document.getElementById('notes').value = pending.notes || '';
+      document.getElementById('duedate').value = pending.duedate || '';
+      sessionStorage.removeItem('planner_pending');
+      await createTask(resp.accessToken);
+    }
   }
 }
 
@@ -141,56 +100,32 @@ function showStatus(msg, type) {
   el.className = 'status ' + type;
 }
 
-async function getToken(clientId, tenantId) {
-  const SCOPES = 'Tasks.ReadWrite';
-  const redirectUri = window.location.href.split('?')[0];
-  const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
-    `?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${encodeURIComponent(SCOPES)}&response_mode=fragment&prompt=select_account`;
-
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  if (params.get('access_token')) {
-    const token = params.get('access_token');
-    history.replaceState(null, '', window.location.pathname);
-    return token;
+async function getToken() {
+  const accounts = msalApp.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const res = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+      return res.accessToken;
+    } catch {}
   }
-
   sessionStorage.setItem('planner_pending', JSON.stringify({
     title: document.getElementById('title').value,
     notes: document.getElementById('notes').value,
     duedate: document.getElementById('duedate').value
   }));
-  window.location.href = authUrl;
+  await msalApp.acquireTokenRedirect({ scopes: SCOPES });
   return null;
 }
 
-async function submitTask() {
+async function createTask(token) {
   const title = document.getElementById('title').value.trim();
-  if (!title) { showStatus('Skriv en opgavetitel.', 'error'); return; }
-
-  const cfg = loadConfig();
-  if (!cfg.clientId || !cfg.tenantId || !cfg.planId) {
-    showStatus('Udfyld konfiguration (Client ID, Tenant ID, Plan ID) først.', 'error');
-    document.getElementById('config-panel').classList.add('open');
-    return;
-  }
-
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  showStatus('Logger ind…', 'loading');
-
-  const token = await getToken(cfg.clientId, cfg.tenantId);
-  if (!token) return;
+  const notes = document.getElementById('notes').value.trim();
+  const duedate = document.getElementById('duedate').value;
 
   showStatus('Opretter opgave…', 'loading');
+  document.getElementById('submit-btn').disabled = true;
 
-  const body = { title, planId: cfg.planId };
-  if (cfg.bucketId) body.bucketId = cfg.bucketId;
-
-  const notes = document.getElementById('notes').value.trim();
-  if (notes) body.details = { description: notes };
-
-  const duedate = document.getElementById('duedate').value;
+  const body = { title, planId: PLAN_ID };
   if (duedate) body.dueDateTime = new Date(duedate + 'T12:00:00').toISOString();
 
   try {
@@ -199,6 +134,20 @@ async function submitTask() {
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+
+    if (res.ok && notes) {
+      const task = await res.json();
+      const etag = task['@odata.etag'] || '';
+      await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${task.id}/details`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json',
+          'If-Match': etag
+        },
+        body: JSON.stringify({ description: notes })
+      });
+    }
 
     if (res.ok) {
       showStatus('✓ Opgave tilføjet til indbakken!', 'success');
@@ -212,22 +161,18 @@ async function submitTask() {
   } catch (e) {
     showStatus('Netværksfejl: ' + e.message, 'error');
   }
-  btn.disabled = false;
+  document.getElementById('submit-btn').disabled = false;
 }
 
-window.addEventListener('load', () => {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  if (params.get('access_token')) {
-    const pending = JSON.parse(sessionStorage.getItem('planner_pending') || '{}');
-    if (pending.title) {
-      document.getElementById('title').value = pending.title;
-      document.getElementById('notes').value = pending.notes || '';
-      document.getElementById('duedate').value = pending.duedate || '';
-      sessionStorage.removeItem('planner_pending');
-      submitTask();
-    }
-  }
-});
+async function submitTask() {
+  const title = document.getElementById('title').value.trim();
+  if (!title) { showStatus('Skriv en opgavetitel.', 'error'); return; }
+  showStatus('Logger ind…', 'loading');
+  const token = await getToken();
+  if (token) await createTask(token);
+}
+
+init();
 </script>
 </body>
 </html>
